@@ -1,10 +1,8 @@
 //***********************************************************************
 // EE569 Homework 1, Prof. Kuo, Spring 2018
 // @author: Hrishikesh Hippalgaonkar
-// Email ID: hippalga@usc.edu
-// USC ID: 9573681608
 // All code tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
-// Submission Date: 4th February, 2016
+// Date: 4th February, 2016
 //***********************************************************************
 
 
