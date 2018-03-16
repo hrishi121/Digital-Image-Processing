@@ -1,0 +1,3855 @@
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 1a
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 4){
+        cout << "Syntax Error - Incorrect Parameter Usage:" << endl;
+        cout << "program_name input_image.raw circle_image.raw square_image.raw [ImgWidth = 256] [ImgHeight = 256]" << endl;
+        return 0;
+    }
+
+	imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[4]), atoi(argv[5]));
+
+	unsigned char *squareImage = test1.readImage(argv[1], 3);
+	cout << "Program running...." << "\n\n";
+
+    unsigned char *circleWarp = test1.Square2CircleWarp(squareImage);
+    test1.saveImage(circleWarp, argv[2], 3);
+
+    unsigned char *circleImage = test1.readImage(argv[2], 3);
+    unsigned char *squareWarp = test1.Circle2SquareWarp(circleWarp);
+    test1.saveImage(squareWarp, argv[3], 3);
+
+    test1.freeMemory(squareWarp);
+    test1.freeMemory(squareImage);
+    test1.freeMemory(circleImage);
+    test1.freeMemory(circleWarp);
+    cout << "Program executed succesfully!!" << endl;
+
+	getchar();
+
+}
+
+//************************************************************************************
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+//************************************************************************************
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageBasicOps temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+    for (int i = 0; i < imgHeight; i++) {
+        for (int j =0; j < imgWidth; j++) {
+            plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[3*i + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//************************************************************************************
+
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+    unsigned char BilinInter(unsigned char **imgData, double x, double y);
+    // Perform Bilinear Interpolation of the coordinates x, y for the original image imgData
+
+    unsigned char *Square2CircleWarp(unsigned char *imgData);
+    // Warp a square image to a circle
+
+    unsigned char *Circle2SquareWarp(unsigned char *imgData);
+    // Warp a circular image to a square
+
+};
+
+#endif /* IMAGEPROCESALGO_H_ */
+
+
+
+#include "imageProcesAlgo.h"
+
+unsigned char imageProcesAlgo::BilinInter(unsigned char **plane, double x, double y) {
+    // imgData : The original input image
+    // x: x coordinate in new image, which is to be interpolated
+    // y: y coordinate in new image, which is to be interpolated
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char newPixelValue;
+
+    int tempX = floor(x);
+    int tempY = floor(y);
+
+    if(x >= 511) {
+        tempX = tempX - 1;
+        tempY = tempY - 1;
+    }
+    double deltaX = x - tempX;
+    double deltaY = y - tempY;
+
+    newPixelValue = (1 - deltaX) * (1 - deltaY) * plane[tempX][tempY]
+                  + (deltaX) * (1 - deltaY) * plane[tempX][tempY + 1]
+                  + (1 - deltaX) * (deltaY) * plane[tempX + 1][tempY]
+                  + (deltaX) * (deltaY) * plane[tempX + 1][tempY + 1];
+
+    return newPixelValue;
+}
+
+//*****************************************************************************************************
+
+
+unsigned char *imageProcesAlgo::Square2CircleWarp(unsigned char *imgData) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+    unsigned char *newImg = new unsigned char[w1 * h1 * 3];
+
+    for(int i = 0; i<w1*h1*3; i++)
+        newImg[i] = 0;
+
+
+    unsigned char **plane1 = temp1.separatePlane(imgData, 1);
+    unsigned char **plane2 = temp1.separatePlane(imgData, 2);
+    unsigned char **plane3 = temp1.separatePlane(imgData, 3);
+
+    double u, v, x, y;
+    for(int i = 0; i<imgWidth; i++) {
+        for(int j = 0; j<imgHeight; j++) {
+
+            u = (double(i)/256) - 1;
+            v = (double(j)/256) - 1;
+
+            if( sqrt(u*u + v*v) <= 1) {
+
+                x = (0.5*(sqrt(2 + u*u - v*v + 2*sqrt(2)*u) - sqrt(2 + u*u - v*v - 2*sqrt(2)*u)) + 1)*256;
+                y = (0.5*(sqrt(2 - u*u + v*v + 2*sqrt(2)*v) - sqrt(2 - u*u + v*v - 2*sqrt(2)*v)) + 1)*256;
+                newImg[i*imgWidth*3 + j*3]     = temp1.BilinInter(plane1, x, y);
+                newImg[i*imgWidth*3 + j*3 + 1] = temp1.BilinInter(plane2, x, y);
+                newImg[i*imgWidth*3 + j*3 + 2] = temp1.BilinInter(plane3, x, y);
+            }
+        }
+    }
+
+    for(int i = 0; i< imgHeight; i++) {
+        delete[] plane1[i];
+        delete[] plane2[i];
+        delete[] plane3[i];
+    }
+    delete[] plane1;
+    delete[] plane2;
+    delete[] plane3;
+
+    return newImg;
+}
+
+
+//*****************************************************************************************************
+
+unsigned char *imageProcesAlgo::Circle2SquareWarp(unsigned char *imgData) {
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+    unsigned char *newImg = new unsigned char[w1 * h1 * 3];
+
+    for(int i = 0; i<w1*h1*3; i++)
+        newImg[i] = 0;
+
+
+    unsigned char **plane1 = temp1.separatePlane(imgData, 1);
+    unsigned char **plane2 = temp1.separatePlane(imgData, 2);
+    unsigned char **plane3 = temp1.separatePlane(imgData, 3);
+
+    double u, v, x, y;
+    for(int i = 0; i<imgWidth; i++) {
+        for(int j = 0; j<imgHeight; j++) {
+
+            x = (double(i)/256) - 1;
+            y = (double(j)/256) - 1;
+
+            u = x*sqrt(1 - (0.5 * y * y));
+            v = y*sqrt(1 - (0.5 * x * x));
+            
+            newImg[i*imgWidth*3 + j*3]     = temp1.BilinInter(plane1, (u+1)*256, (v+1)*256);
+            newImg[i*imgWidth*3 + j*3 + 1] = temp1.BilinInter(plane2, (u+1)*256, (v+1)*256);
+            newImg[i*imgWidth*3 + j*3 + 2] = temp1.BilinInter(plane3, (u+1)*256, (v+1)*256);
+
+        }
+    }
+
+    for(int i = 0; i< imgHeight; i++) {
+        delete[] plane1[i];
+        delete[] plane2[i];
+        delete[] plane3[i];
+    }
+    delete[] plane1;
+    delete[] plane2;
+    delete[] plane3;
+
+    return newImg;
+}
+
+//************************************************************************************
+
+
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 1b
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 6){
+        cout << "Syntax Error - Incorrect Parameter Usage:" << endl;
+        cout << "program_name left.raw middle.raw right.raw output.raw [ImgWidth = 256] [ImgHeight = 256]" << endl;
+        return 0;
+    }
+
+    imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[5]), atoi(argv[6]));
+
+    unsigned char *leftImg   = test1.readImage(argv[1], 3);
+    unsigned char *middleImg = test1.readImage(argv[2], 3);
+    unsigned char *rightImg  = test1.readImage(argv[3], 3);
+    cout << "Program running...." << "\n\n";
+
+    test1.Stitch(leftImg, middleImg, rightImg, argv[4]);
+
+    test1.freeMemory(leftImg);
+    test1.freeMemory(middleImg);
+    test1.freeMemory(rightImg);
+    cout << "\nProgram executed succesfully!!.....Press Ctrl+C to exit" << endl;
+
+    getchar();
+
+}
+
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+    unsigned char ***image3D(unsigned char* img);
+
+    void freeMemory3D(unsigned char ***img);
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//***************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//***************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageBasicOps temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+    for (int i = 0; i < imgHeight; i++) {
+        for (int j =0; j < imgWidth; j++) {
+            plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[3*i + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//***************************************************************************************
+
+
+unsigned char ***imageBasicOps::image3D(unsigned char* img) {
+
+    unsigned char ***A = new unsigned char **[imgHeight];
+
+    for(int i = 0; i<imgHeight; i++) {
+        A[i] = new unsigned char *[imgWidth];
+        for(int j = 0; j<imgWidth; j++) {
+            A[i][j] = new unsigned char[3];
+        }
+    }
+
+    for(int i =0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            for(int k = 0; k<3; k++)
+                A[i][j][k] = img[i*imgWidth*3 + j*3 + k];
+        }
+    }
+
+    return A;
+}
+
+//***************************************************************************************
+
+
+void imageBasicOps::freeMemory3D(unsigned char ***img) {
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) 
+            delete[] img[i][j];
+        delete[] img[i];
+    }
+
+    delete[] img;
+}
+
+//************************************************************************************
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+    unsigned char *BilinInter(unsigned char ***imgData, double x, double y);
+    // Perform Bilinear Interpolation of the coordinates x, y for the original image imgData
+
+    double *HmatrixMultiply1(double x, double y);
+
+    double *HmatrixMultiply2(double x, double y);
+
+    double *HmatrixMultiply3(double x, double y);
+
+    void Stitch(unsigned char *leftImg, unsigned char *middleImg,
+                 unsigned char *rightImg, char name[]);
+
+};
+
+#endif /* IMAGEPROCESALGO_H_ */
+
+
+
+#include "imageProcesAlgo.h"
+
+unsigned char *imageProcesAlgo::BilinInter(unsigned char ***plane, double x, double y) {
+    // imgData : The original input image
+    // x: x coordinate in new image, which is to be interpolated
+    // y: y coordinate in new image, which is to be interpolated
+
+    unsigned char *newPixelValue = new unsigned char[3];
+
+    int tempY = floor(x);
+    int tempX = floor(y);
+
+    /*if(x >= 511) {
+        tempX = tempX - 1;
+        tempY = tempY - 1;
+    }*/
+    double deltaX = x - tempY;
+    double deltaY = y - tempX;
+
+    for(int i = 0; i<3; i++){
+
+    newPixelValue[i] = (1 - deltaX) * (1 - deltaY) * plane[tempX][tempY][i]
+                  + (deltaX) * (1 - deltaY) * plane[tempX][tempY + 1][i]
+                  + (1 - deltaX) * (deltaY) * plane[tempX + 1][tempY][i]
+                  + (deltaX) * (deltaY) * plane[tempX + 1][tempY + 1][i];
+                  //cout << i;
+
+    }
+
+    return newPixelValue;
+}
+
+
+
+//*****************************************************************************************************
+
+
+
+double *imageProcesAlgo::HmatrixMultiply1(double r, double c) {
+
+    double invHmatrix[3][3] = { {5.93574612e-01,  -1.18161093e-01,   1.13810691e+02},
+                                {-1.46431303e-02,   4.39553548e-01,  -1.73736135e+02},
+                                {-2.65245643e-05,  -4.22235087e-04,   1.00000000e+00} };
+
+
+    double *newCoords = new double[2];
+
+    double w     = r*invHmatrix[2][0] + c*invHmatrix[2][1] + invHmatrix[2][2];
+    newCoords[0] = (r*invHmatrix[0][0] + c*invHmatrix[0][1] + invHmatrix[0][2]) / w ; // rows
+    newCoords[1] = (r*invHmatrix[1][0] + c*invHmatrix[1][1] + invHmatrix[1][2]) / w ; // columns
+
+    /*double w     = c*invHmatrix[2][0] + r*invHmatrix[2][1] + invHmatrix[2][2];
+    newCoords[1] = (c*invHmatrix[0][0] + r*invHmatrix[0][1] + invHmatrix[0][2]) / w ; // rows
+    newCoords[0] = (c*invHmatrix[1][0] + r*invHmatrix[1][1] + invHmatrix[1][2]) / w ; // columns*/
+
+    return newCoords;
+}
+
+
+//*****************************************************************************************************
+
+
+
+double *imageProcesAlgo::HmatrixMultiply2(double r, double c) {
+
+    double invHmatrix[3][3] = { {2.72080308e+01,   7.84501789e+00,  -9.03502312e+03},
+                                {2.47651339e-02,   3.05513203e+01,  -3.08702441e+04},
+                                {-1.01013995e-03,   2.32888902e-02,   1.00000000e+00} };
+
+
+
+    double *newCoords = new double[2];
+
+    double w     = r*invHmatrix[2][0] + c*invHmatrix[2][1] + invHmatrix[2][2];
+    newCoords[0] = (r*invHmatrix[0][0] + c*invHmatrix[0][1] + invHmatrix[0][2]) / w ; // rows
+    newCoords[1] = (r*invHmatrix[1][0] + c*invHmatrix[1][1] + invHmatrix[1][2]) / w ; // columns
+
+    return newCoords;
+}
+
+
+//*****************************************************************************************************
+
+
+
+double *imageProcesAlgo::HmatrixMultiply3(double r, double c) {
+
+    double invHmatrix[3][3] = { {7.43203726e-01,   2.19345675e-02,   4.27355074e+01},
+                                {-3.41738900e-02,   8.81984449e-01,  -4.27152335e+02},
+                                {-3.65773069e-04,   5.01592257e-05,   1} };
+
+
+
+    double *newCoords = new double[2];
+
+    double w     = r*invHmatrix[2][0] + c*invHmatrix[2][1] + invHmatrix[2][2];
+    newCoords[0] = (r*invHmatrix[0][0] + c*invHmatrix[0][1] + invHmatrix[0][2]) / w ; // rows
+    newCoords[1] = (r*invHmatrix[1][0] + c*invHmatrix[1][1] + invHmatrix[1][2]) / w ; // columns
+
+    return newCoords;
+}
+
+
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::Stitch(unsigned char *leftImg, unsigned char *middleImg, unsigned char *rightImg, char name[]) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1, temp2;
+    int w2 = 5*w1;
+    int h2 = 2*h1;
+
+    temp2.setDimensions(w2, h2);
+    temp1.setDimensions(w1, h1);
+
+    cout << "w1: " << w1 << " w2: " << w2 << " h1: " << h1 << " h2: " << h2 << endl;
+
+    unsigned char *finalImg = new unsigned char[w2*h2*3];
+
+    cout << "flag 1" << endl;
+
+    unsigned char ***leftImg2   = temp1.image3D(leftImg);
+    unsigned char ***rightImg2  = temp1.image3D(rightImg);
+    unsigned char ***middleImg2  = temp1.image3D(middleImg);
+
+    for(int i = 0; i<w2*h2*3; i++)
+        finalImg[i] = 0;
+
+
+
+    double *newCoords;
+    unsigned char *newPixelValue;
+
+    for(int i = 0; i<h2; i++) {
+        for(int j = 0; j<w2; j++) {
+            newCoords = temp2.HmatrixMultiply1(i, j);
+
+            if(newCoords[0]>=1 && newCoords[1]>=1 && newCoords[0]<=(h1 - 2) && newCoords[1]<=(w1 - 2)) {
+
+                //cout << "i: " << i << " j: " << j << endl;
+                newPixelValue = temp2.BilinInter(leftImg2, newCoords[1], newCoords[0]);
+                finalImg[(i + 300)*w2*3 + (j)*3] = newPixelValue[0];
+                finalImg[(i + 300)*w2*3 + (j)*3 + 1] = newPixelValue[1];
+                finalImg[(i + 300)*w2*3 + (j)*3 + 2] = newPixelValue[2];
+
+                delete[] newPixelValue;
+            }
+        }
+    }
+
+    for(int i = 0; i<h2; i++) {
+        for(int j = 0; j<w2; j++) {
+            newCoords = temp2.HmatrixMultiply2(i, j);
+
+            if(newCoords[0]>=1 && newCoords[1]>=1 && newCoords[0]<=(h1 - 2) && newCoords[1]<=(w1 - 2)) {
+
+                newPixelValue = temp2.BilinInter(rightImg2, newCoords[1], newCoords[0]);
+                finalImg[(i + 300)*w2*3 + j*3] = newPixelValue[0];
+                finalImg[(i + 300)*w2*3 + j*3 + 1] = newPixelValue[1];
+                finalImg[(i + 300)*w2*3 + j*3 + 2] = newPixelValue[2];
+
+                delete[] newPixelValue;
+            }
+        }
+    }
+
+    for(int i = 0; i<h1; i++){
+        for(int j = 0; j<w1; j++){
+            finalImg[(i + 300)*w2*3 + (j+800)*3]     = middleImg[(i)*imgWidth*3 + j*3];
+            finalImg[(i + 300)*w2*3 + (j+800)*3 + 1] = middleImg[(i)*imgWidth*3 + j*3 + 1];
+            finalImg[(i + 300)*w2*3 + (j+800)*3 + 2] = middleImg[(i)*imgWidth*3 + j*3 + 2];
+        }
+    }
+
+
+
+    /*for(int i = 0; i<h2; i++) {
+        for(int j = 0; j<w2; j++) {
+            newCoords = temp2.HmatrixMultiply3(i, j);
+
+            if(newCoords[0]>=1 && newCoords[1]>=1 && newCoords[0]<=(h1 - 2) && newCoords[1]<=(w1 - 2)) {
+
+                //cout << "i: " << i << " j: " << j << endl;
+                newPixelValue = temp2.BilinInter(middleImg2, newCoords[1], newCoords[0]);
+                finalImg[(i)*w2*3 + (j)*3] = newPixelValue[0];
+                finalImg[(i)*w2*3 + (j)*3 + 1] = newPixelValue[1];
+                finalImg[(i)*w2*3 + (j)*3 + 2] = newPixelValue[2];
+
+                delete[] newPixelValue;
+            }
+        }
+    }*/
+
+
+
+
+
+
+    cout << "Flag 5" << endl;
+
+    delete[] newCoords;
+
+    temp1.freeMemory3D(leftImg2);
+    temp1.freeMemory3D(rightImg2);
+    temp1.freeMemory3D(middleImg2);
+    temp2.saveImage(finalImg, name, 3);
+    temp2.freeMemory(finalImg);
+
+
+}
+
+
+//************************************************************************************
+
+
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 2a
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 9){
+        cout << "Syntax Error - Incorrect Parameter Usage:" << endl;
+        cout << "program_name input_image.raw fixedthresh.raw randThresh.raw dither.raw new.raw [ImgWidth = 256] [ImgHeight = 256] [Threshold = 127] [order = 8]" << endl;
+        return 0;
+    }
+
+    imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[6]), atoi(argv[7]));
+
+    unsigned char *inputImage = test1.readImage(argv[1], 3);
+    cout << "Program running...." << "\n\n";
+
+    test1.FixedThreshold(inputImage, atoi(argv[8]), argv[2]);
+    test1.RandomThreshold(inputImage, argv[3]);
+
+    test1.OrderedDither(inputImage, argv[4], atoi(argv[9]));
+
+    test1.FourLevelOrderedDither(inputImage, argv[5], atoi(argv[9]));
+
+    test1.freeMemory(inputImage);
+    cout << "Program executed succesfully!!" << endl;
+
+    getchar();
+
+}
+
+
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//***************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//***************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageBasicOps temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+    for (int i = 0; i < imgHeight; i++) {
+        for (int j =0; j < imgWidth; j++) {
+            plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[3*i + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//***********************************************************************************
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+
+    void FixedThreshold(unsigned char *imgData, unsigned char threshold, char name[]);
+
+    void RandomThreshold(unsigned char *imgData, char name[]);
+
+    void OrderedDither(unsigned char *imgData, char name[], int order);
+
+    int **BayerIndexMatrix(int order);
+
+    void FourLevelOrderedDither(unsigned char*imgData, char name[], int order);
+
+};
+
+#endif /* IMAGEPROCESALGO_H_ */
+
+
+
+
+#include "imageProcesAlgo.h"
+
+void imageProcesAlgo::FixedThreshold(unsigned char *imgData, unsigned char threshold, char name[]) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int Size = imgWidth*imgHeight;
+    unsigned char *newImg = new unsigned char[Size];
+
+    for(int i = 0; i<Size; i++) {
+        if(imgData[i] >= threshold)
+            newImg[i] = 255;
+        else
+            newImg[i] = 0;
+    }
+
+    temp1.saveImage(newImg, name, 1);
+    temp1.freeMemory(newImg);
+
+}
+
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::RandomThreshold(unsigned char *imgData, char name[]) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int Size = imgWidth*imgHeight;
+    unsigned char *newImg = new unsigned char[Size];
+
+    for(int i = 0; i<Size; i++) {
+        unsigned char randomThreshold = rand() % 256;
+        if(imgData[i] >= randomThreshold)
+            newImg[i] = 0;
+        else
+            newImg[i] = 255;
+    }
+
+    temp1.saveImage(newImg, name, 1);
+    temp1.freeMemory(newImg);
+
+}
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::OrderedDither(unsigned char*imgData, char name[], int order) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int Size = imgWidth*imgHeight;
+    unsigned char *newImg = new unsigned char[Size];
+
+    int **matrix = temp1.BayerIndexMatrix(order);
+    cout << "\n";
+    for(int i = 0; i<order; i++){
+        for(int j = 0; j<order; j++){
+            cout << matrix[i][j] << " ";
+        }
+        cout << endl;
+    }
+    cout << "Flag 2" << endl;
+    unsigned char T[order][order];
+
+    for(int i = 0; i<order; i++) {
+        for(int j = 0; j<order; j++) {
+            T[i][j] = floor(double((255*(matrix[i][j] + 0.5))/(order*order)));
+            cout << int(T[i][j]) << " ";
+        }
+        cout << endl;
+    }
+
+    cout << "Flag 3" << endl;
+
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            if(imgData[i*imgWidth + j] > T[i%order][j%order])
+                newImg[i*imgWidth + j] = 255;
+            else
+                newImg[i*imgWidth + j] = 0;
+        }
+    }
+
+
+    for (int i = 0; i<order; i++)
+        delete[] matrix[i];
+    delete matrix;
+
+    temp1.saveImage(newImg, name, 1);
+    temp1.freeMemory(newImg);
+}
+
+
+
+//*****************************************************************************************************
+
+void imageProcesAlgo::FourLevelOrderedDither(unsigned char*imgData, char name[], int order) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int Size = imgWidth*imgHeight;
+    unsigned char *newImg = new unsigned char[Size];
+
+    int **matrix = temp1.BayerIndexMatrix(order);
+    cout << "\n";
+    for(int i = 0; i<order; i++){
+        for(int j = 0; j<order; j++){
+            cout << matrix[i][j] << " ";
+        }
+        cout << endl;
+    }
+    cout << "Flag 2" << endl;
+    unsigned char T[order][order];
+
+    for(int i = 0; i<order; i++) {
+        for(int j = 0; j<order; j++) {
+            T[i][j] = floor(double((255*(matrix[i][j] + 0.5))/(order*order)));
+            cout << int(T[i][j]) << " ";
+        }
+        cout << endl;
+    }
+
+    cout << "Flag 3" << endl;
+
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            if(imgData[i*imgWidth + j] > T[i%order][j%order])
+                newImg[i*imgWidth + j] = 255;
+            else if((imgData[i*imgWidth + j] <= T[i%order][j%order]) && (imgData[i*imgWidth + j] > double(0.667*T[i%order][j%order])))
+                newImg[i*imgWidth + j] = 170;
+            else if((imgData[i*imgWidth + j] > double(0.333*T[i%order][j%order])) && (imgData[i*imgWidth + j] <= double(0.667*T[i%order][j%order])))
+                newImg[i*imgWidth + j] = 85;
+            else
+                newImg[i*imgWidth + j] = 0;
+        }
+    }
+
+
+    for (int i = 0; i<order; i++)
+        delete[] matrix[i];
+    delete matrix;
+
+    temp1.saveImage(newImg, name, 1);
+    temp1.freeMemory(newImg);
+}
+
+//*****************************************************************************************************
+
+int **imageProcesAlgo::BayerIndexMatrix(int order) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int **indexMatrix = new int *[order];
+        for(int i = 0; i<order; i++)
+            indexMatrix[i] = new int [order];
+
+    int temp, n = order/2;
+
+
+    for(int i = 0; i<order; i++) {
+        for(int j = 0; j<order; j++){
+            if((i < n) && (j < n))
+                temp = 1;
+            else if((i < n) && (j >= n))
+                temp = 2;
+            else if((i >= n) && (j < n))
+                temp = 3;
+            else
+                temp = 0;
+
+            switch(order){
+
+                case 2: {
+                    indexMatrix[i][j] = temp;
+                    break;
+                }
+
+                case 4:{
+                    int **I = temp1.BayerIndexMatrix(2);
+                    indexMatrix[i][j] = 4*I[i%2][j%2] + temp;
+                    for (int i = 0; i<2; i++)
+                        delete[] I[i];
+                    delete I;
+                    break;
+                }
+
+                case 8:{
+                    int **I = temp1.BayerIndexMatrix(4);
+                    indexMatrix[i][j] = (4*I[i%4][j%4] + temp);
+                    for (int i = 0; i<4; i++)
+                        delete[] I[i];
+                    delete I;
+                    break;
+                }
+
+            }
+        }
+
+    }
+    return indexMatrix;
+}
+
+//***********************************************************************************
+
+
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 2b
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 6){
+        printf("Syntax Error - Incorrect Parameter Usage: \n"
+               "program_name input_image.raw output.raw [ImgWidth = 256] [ImgHeight = 256] [Threshold = 127]\n"
+               "[dithering = 1-> Floyd Steinberg algorithm with normal scanning\n"
+               "          \t 2-> Floyd Steinberg algorithm with serpentine scanning\n"
+               "          \t 3-> Jarvis, Judice and Ninke algorithm\n"
+               "          \t 4-> Stucki algorithm]");
+
+        return 0;
+    }
+
+    imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[3]), atoi(argv[4]));
+
+    unsigned char *inputImage = test1.readImage(argv[1], 3);
+    cout << "Program running...." << "\n\n";
+
+    switch(atoi(argv[6])) {
+        case 1: {
+            unsigned char *FloydImage1 = test1.FloydSteinberg1(inputImage, atoi(argv[5]));
+            test1.saveImage(FloydImage1, argv[2], 1);
+            test1.freeMemory(FloydImage1);
+            break;
+        }
+
+        case 2: {
+            unsigned char *FloydImage2 = test1.FloydSteinberg2(inputImage, atoi(argv[5]));
+            test1.saveImage(FloydImage2, argv[2], 1);
+            test1.freeMemory(FloydImage2);
+            break;
+        }
+
+         case 3: {
+            unsigned char *JJNimage = test1.JJN(inputImage, atoi(argv[5]));
+            test1.saveImage(JJNimage, argv[2], 1);
+            test1.freeMemory(JJNimage);
+            break;
+        }
+
+         case 4: {
+            unsigned char *StuckiImage = test1.Stucki(inputImage, atoi(argv[5]));
+            test1.saveImage(StuckiImage, argv[2], 1);
+            test1.freeMemory(StuckiImage);
+            break;
+        }
+    }
+
+    test1.freeMemory(inputImage);
+    cout << "\nProgram executed succesfully!!....Press Ctrl+C to exit" << endl;
+
+    getchar();
+
+}
+
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//***************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//***************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageBasicOps temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+    for (int i = 0; i < imgHeight; i++) {
+        for (int j =0; j < imgWidth; j++) {
+            plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[3*i + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//***********************************************************************************
+
+
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+
+    unsigned char* FloydSteinberg1(unsigned char *imgData, int threshold);
+
+    unsigned char* FloydSteinberg2(unsigned char *imgData, int threshold);
+
+    unsigned char* JJN(unsigned char *imgData, int threshold);
+
+    unsigned char* Stucki(unsigned char *imgData, int threshold);
+
+};
+
+#endif /* IMAGEPROCESALGO_H_ */
+
+
+
+
+#include "imageProcesAlgo.h"
+
+unsigned char* imageProcesAlgo::FloydSteinberg1(unsigned char *imgData, int threshold) {
+
+    double error, valueOld, valueNew;
+
+    unsigned char *finalImage = new unsigned char[imgWidth*imgHeight];
+    double *ditherFSImg = new double[imgWidth * imgHeight];
+
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            ditherFSImg[i*imgWidth + j] = (double(imgData[i*imgWidth + j]));
+        }
+    }
+
+    for(int i = 0; i<imgHeight-1; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+
+            valueOld = ditherFSImg[i*imgWidth + j];
+            if(valueOld >= threshold)
+                valueNew = 255;
+            else
+                valueNew = 0;
+            ditherFSImg[i*imgWidth + j] = valueNew;
+
+            error = (valueOld - valueNew);
+            ditherFSImg[i*imgWidth + j + 1]       = ditherFSImg[i*imgWidth + j + 1]       + double(error*0.4375);
+            ditherFSImg[(i + 1)*imgWidth + j - 1] = ditherFSImg[(i + 1)*imgWidth + j - 1] + double(error*0.1875);
+            ditherFSImg[(i + 1)*imgWidth + j]     = ditherFSImg[(i + 1)*imgWidth + j]     + double(error*0.3125);
+            ditherFSImg[(i + 1)*imgWidth + j + 1] = ditherFSImg[(i + 1)*imgWidth + j + 1] + double(error*0.0625);
+        }
+    }
+
+    cout << "Floyd Steinberg Algorithm with normal scanning implemented!" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            finalImage[i*imgWidth + j] = (ditherFSImg[i*imgWidth + j]);
+        }
+    }
+
+    delete[] ditherFSImg;
+    return finalImage;
+
+}
+
+
+
+//*****************************************************************************************************
+
+
+
+unsigned char* imageProcesAlgo::FloydSteinberg2(unsigned char *imgData, int threshold) {
+
+    double error, valueOld, valueNew;
+
+    unsigned char *finalImage = new unsigned char[imgWidth*imgHeight];
+    double *ditherFSImg = new double[imgWidth * imgHeight];
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            ditherFSImg[i*imgWidth + j] = (double(imgData[i*imgWidth + j]));
+        }
+    }
+
+    for(int i = 0; i<imgHeight-1; i++) {
+        if(i%2 == 0) {
+            for(int j = 0; j<imgWidth; j++) {
+
+                valueOld = ditherFSImg[i*imgWidth + j];
+                if(valueOld >= threshold)
+                    valueNew = 255;
+                else
+                    valueNew = 0;
+
+                ditherFSImg[i*imgWidth + j] = valueNew;
+                error = (valueOld - valueNew);
+
+                ditherFSImg[i*imgWidth + j + 1]       = ditherFSImg[i*imgWidth + j + 1]       + double(error*0.4375);
+                ditherFSImg[(i + 1)*imgWidth + j - 1] = ditherFSImg[(i + 1)*imgWidth + j - 1] + double(error*0.1875);
+                ditherFSImg[(i + 1)*imgWidth + j]     = ditherFSImg[(i + 1)*imgWidth + j]     + double(error*0.3125);
+                ditherFSImg[(i + 1)*imgWidth + j + 1] = ditherFSImg[(i + 1)*imgWidth + j + 1] + double(error*0.0625);
+            }
+        }
+
+        else {
+            for(int j = imgWidth - 1; j>=0; j--) {
+
+                valueOld = ditherFSImg[i*imgWidth + j];
+                if(valueOld >= threshold)
+                    valueNew = 255;
+                else
+                    valueNew = 0;
+
+                ditherFSImg[i*imgWidth + j] = valueNew;
+                error = (valueOld - valueNew);
+
+                ditherFSImg[i*imgWidth + j - 1]       = ditherFSImg[i*imgWidth + j - 1]       + double(error*0.4375);
+                ditherFSImg[(i + 1)*imgWidth + j + 1] = ditherFSImg[(i + 1)*imgWidth + j + 1] + double(error*0.1875);
+                ditherFSImg[(i + 1)*imgWidth + j]     = ditherFSImg[(i + 1)*imgWidth + j]     + double(error*0.3125);
+                ditherFSImg[(i + 1)*imgWidth + j - 1] = ditherFSImg[(i + 1)*imgWidth + j - 1] + double(error*0.0625);
+            }
+        }
+    }
+
+    cout << "Floyd Steinberg Algorithm with serpentine scanning implemented!" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            finalImage[i*imgWidth + j] = (ditherFSImg[i*imgWidth + j]);
+        }
+    }
+
+    delete[] ditherFSImg;
+    return finalImage;
+
+}
+
+
+
+//*****************************************************************************************************
+
+
+
+unsigned char* imageProcesAlgo::JJN(unsigned char *imgData, int threshold) {
+
+    double error, valueOld, valueNew;
+
+    unsigned char *finalImage = new unsigned char[imgWidth*imgHeight];
+    double *ditherFSImg = new double[imgWidth * imgHeight];
+
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            ditherFSImg[i*imgWidth + j] = (double(imgData[i*imgWidth + j]));
+        }
+    }
+
+    for(int i = 0; i<imgHeight-2; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+
+            valueOld = ditherFSImg[i*imgWidth + j];
+            if(valueOld >= threshold)
+                valueNew = 255;
+            else
+                valueNew = 0;
+            ditherFSImg[i*imgWidth + j] = valueNew;
+
+            error = (valueOld - valueNew);
+            ditherFSImg[i*imgWidth + j + 1]       = ditherFSImg[i*imgWidth + j + 1]       + double(error*0.1458333);
+            ditherFSImg[i*imgWidth + j + 2]       = ditherFSImg[i*imgWidth + j + 2]       + double(error*0.1041667);
+            ditherFSImg[(i + 1)*imgWidth + j]     = ditherFSImg[(i + 1)*imgWidth + j]     + double(error*0.1458333);
+            ditherFSImg[(i + 1)*imgWidth + j + 1] = ditherFSImg[(i + 1)*imgWidth + j + 1] + double(error*0.1041667);
+            ditherFSImg[(i + 1)*imgWidth + j + 2] = ditherFSImg[(i + 1)*imgWidth + j + 2] + double(error*0.0625);
+            ditherFSImg[(i + 1)*imgWidth + j - 1] = ditherFSImg[(i + 1)*imgWidth + j - 1] + double(error*0.1041667);
+            ditherFSImg[(i + 1)*imgWidth + j - 2] = ditherFSImg[(i + 1)*imgWidth + j - 2] + double(error*0.0625);
+
+            ditherFSImg[(i + 2)*imgWidth + j]     = ditherFSImg[(i + 2)*imgWidth + j]     + double(error*0.1041667);
+            ditherFSImg[(i + 2)*imgWidth + j + 1] = ditherFSImg[(i + 2)*imgWidth + j + 1] + double(error*0.0625);
+            ditherFSImg[(i + 2)*imgWidth + j + 2] = ditherFSImg[(i + 2)*imgWidth + j + 2] + double(error*0.0208333);
+            ditherFSImg[(i + 2)*imgWidth + j - 1] = ditherFSImg[(i + 2)*imgWidth + j - 1] + double(error*0.0625);
+            ditherFSImg[(i + 2)*imgWidth + j - 2] = ditherFSImg[(i + 2)*imgWidth + j - 2] + double(error*0.0208333);
+
+
+
+        }
+    }
+
+    cout << "Jarvis, Judice and Ninke Algorithm implemented!" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            finalImage[i*imgWidth + j] = (ditherFSImg[i*imgWidth + j]);
+        }
+    }
+
+    delete[] ditherFSImg;
+    return finalImage;
+
+}
+
+
+
+//*****************************************************************************************************
+
+
+
+unsigned char* imageProcesAlgo::Stucki(unsigned char *imgData, int threshold) {
+
+    double error, valueOld, valueNew;
+
+    unsigned char *finalImage = new unsigned char[imgWidth*imgHeight];
+    double *ditherFSImg = new double[imgWidth * imgHeight];
+
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            ditherFSImg[i*imgWidth + j] = (double(imgData[i*imgWidth + j]));
+        }
+    }
+
+    for(int i = 0; i<imgHeight-2; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+
+            valueOld = ditherFSImg[i*imgWidth + j];
+            if(valueOld >= threshold)
+                valueNew = 255;
+            else
+                valueNew = 0;
+            ditherFSImg[i*imgWidth + j] = valueNew;
+
+            error = (valueOld - valueNew);
+            ditherFSImg[i*imgWidth + j + 1]       = ditherFSImg[i*imgWidth + j + 1]       + double(error*0.1904762);
+            ditherFSImg[i*imgWidth + j + 2]       = ditherFSImg[i*imgWidth + j + 2]       + double(error*0.0952381);
+            ditherFSImg[(i + 1)*imgWidth + j]     = ditherFSImg[(i + 1)*imgWidth + j]     + double(error*0.1904762);
+            ditherFSImg[(i + 1)*imgWidth + j + 1] = ditherFSImg[(i + 1)*imgWidth + j + 1] + double(error*0.0952381);
+            ditherFSImg[(i + 1)*imgWidth + j + 2] = ditherFSImg[(i + 1)*imgWidth + j + 2] + double(error*0.047619);
+            ditherFSImg[(i + 1)*imgWidth + j - 1] = ditherFSImg[(i + 1)*imgWidth + j - 1] + double(error*0.0952381);
+            ditherFSImg[(i + 1)*imgWidth + j - 2] = ditherFSImg[(i + 1)*imgWidth + j - 2] + double(error*0.047619);
+
+            ditherFSImg[(i + 2)*imgWidth + j]     = ditherFSImg[(i + 2)*imgWidth + j]     + double(error*0.0952381);
+            ditherFSImg[(i + 2)*imgWidth + j + 1] = ditherFSImg[(i + 2)*imgWidth + j + 1] + double(error*0.047619);
+            ditherFSImg[(i + 2)*imgWidth + j + 2] = ditherFSImg[(i + 2)*imgWidth + j + 2] + double(error*0.0238095);
+            ditherFSImg[(i + 2)*imgWidth + j - 1] = ditherFSImg[(i + 2)*imgWidth + j - 1] + double(error*0.047619);
+            ditherFSImg[(i + 2)*imgWidth + j - 2] = ditherFSImg[(i + 2)*imgWidth + j - 2] + double(error*0.0238095);
+
+
+
+        }
+    }
+
+    cout << "Stucki's Algorithm implemented!" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            finalImage[i*imgWidth + j] = (ditherFSImg[i*imgWidth + j]);
+        }
+    }
+
+    delete[] ditherFSImg;
+    return finalImage;
+
+}
+
+
+
+//***********************************************************************************
+
+
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 2c
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 8){
+        printf("Syntax Error - Incorrect Parameter Usage: \n"
+               "program_name input_image.raw output.raw [ImgWidth = 256] [ImgHeight = 256]\n"
+               "[Threshold colour image(for each channel)]\n"
+               "[ Option:\n"
+                  "1-> Separable Error Diffusion\n"
+                  "2-> MBVQ-based Error diffusion\n]");
+
+        return 0;
+    }
+
+    imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[3]), atoi(argv[4]));
+
+    unsigned char *inputImage = test1.readImage(argv[1], 3);
+    cout << "Program running...." << "\n\n";
+
+    unsigned char *threshold = new unsigned char[3];
+    threshold[0] = atoi(argv[5]);
+    threshold[1] = atoi(argv[7]);
+    threshold[2] = atoi(argv[6]);
+
+    switch(atoi(argv[8])) {
+
+        case 1:{
+            test1.SeparableErrorDiffusion(inputImage, threshold, argv[2]);
+            break;
+        }
+
+        case 2:{
+            test1.MBVQ_FloydSteinberg(inputImage, argv[2]);
+            break;
+        }
+    }
+
+    test1.freeMemory(threshold);
+    test1.freeMemory(inputImage);
+    cout << "Program executed succesfully!!....Press Ctrl+C to exit\n" << endl;
+
+    getchar();
+
+}
+
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+    unsigned char ***image3D(unsigned char *imgData);
+
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+
+
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//***************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//***************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageBasicOps temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+    for (int i = 0; i < imgHeight; i++) {
+        for (int j =0; j < imgWidth; j++) {
+            plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[i*imgWidth*3 + j*3 + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//***************************************************************************************
+
+unsigned char ***imageBasicOps::image3D(unsigned char *imgData) {
+
+    unsigned char ***A = new unsigned char**[imgHeight];
+    for (int i = 0; i<imgHeight; i++) {
+        A[i] = new unsigned char *[imgWidth];
+        for(int j = 0; j<imgWidth; j++)
+            A[i][j] = new unsigned char[3];
+    }
+
+    for(int i = 0; i< imgHeight; i++) {
+        for(int j = 0; j< imgWidth; j++) {
+            A[i][j][0] = imgData[i*imgWidth*3 + j*3];
+            A[i][j][1] = imgData[i*imgWidth*3 + j*3 + 1];
+            A[i][j][2] = imgData[i*imgWidth*3 + j*3 + 2];
+        }
+    }
+
+    return A;
+
+}
+
+//***********************************************************************************
+
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+
+    void MBVQ_FloydSteinberg(unsigned char *imgData, char name[]);
+
+    void SeparableErrorDiffusion(unsigned char *imgData, unsigned char *threshold, char name[]);
+
+    unsigned char *CMYW(float R2, float G2, float B2);
+    unsigned char *MYGC(float R2, float G2, float B2);
+    unsigned char *RGMY(float R2, float G2, float B2);
+    unsigned char *KRGB(float R2, float G2, float B2);
+    unsigned char *RGBM(float R2, float G2, float B2);
+    unsigned char *CMGB(float R2, float G2, float B2);
+
+    unsigned char *pyramidMBVQ(unsigned char R1, unsigned char G1, unsigned char B1,
+                               float R2, float G2, float B2 );
+    unsigned char C[3] = {0, 255, 255};
+    unsigned char M[3] = {255, 0, 255};
+    unsigned char Y[3] = {255, 255, 0};
+    unsigned char R[3] = {255, 0, 0};
+    unsigned char G[3] = {0, 255, 0};
+    unsigned char B[3] = {0, 0, 255};
+    unsigned char W[3] = {255, 255, 255};
+    unsigned char K[3] = {0, 0, 0};
+};
+
+#endif /* IMAGEPROCESALGO_H_ */
+ 
+
+
+
+#include "imageProcesAlgo.h"
+
+void imageProcesAlgo::SeparableErrorDiffusion(unsigned char *imgData, unsigned char *threshold, char name[]) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    float error = 0, valueOld = 0, valueNew = 0;
+
+    float ***ditherImg = new float**[imgHeight];
+    for (int i = 0; i<imgHeight; i++) {
+        ditherImg[i] = new float *[imgWidth];
+        for(int j = 0; j<imgWidth; j++)
+            ditherImg[i][j] = new float[3];
+    }
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            for(int k = 0; k<3; k++) {
+                ditherImg[i][j][k] = imgData[i*imgWidth*3 + j*3 + k];
+            }
+        }
+    }
+
+    cout << "Flag 1" << endl;
+    unsigned char *finalImage = new unsigned char[imgWidth * imgHeight * 3];
+    for(int i = 0; i<imgHeight * imgWidth * 3; i++)
+        finalImage[i] = 0;
+
+    for(int i = 0; i<imgHeight-1; i++) {
+        for(int j = 1; j<imgWidth-1; j++) {
+            for(int k = 0; k<3; k++) {
+                valueOld = ditherImg[i][j][k];
+                if(valueOld >= threshold[k])
+                    valueNew = 255;
+                else
+                    valueNew = 0;
+                ditherImg[i][j][k] = valueNew;
+
+                error = (valueOld - valueNew);
+                ditherImg[i][j + 1][k]     = ditherImg[i][j + 1][k]     + float(error*0.4375);
+                ditherImg[i + 1][j - 1][k] = ditherImg[i + 1][j - 1][k] + float(error*0.1875);
+                ditherImg[i + 1][j][k]     = ditherImg[i + 1][j][k]     + float(error*0.3125);
+                ditherImg[i + 1][j + 1][k] = ditherImg[i + 1][j + 1][k] + float(error*0.0625);
+            }
+        //cout << "i: " << i << " j: " << j << endl;
+        }
+    }
+
+    cout << "Separable Error diffusion with Floyd Steinberg dithering implemented!\n" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+                finalImage[i*imgWidth*3 + j*3] = ditherImg[i][j][0];
+                finalImage[i*imgWidth*3 + j*3 + 1] = ditherImg[i][j][1];
+                finalImage[i*imgWidth*3 + j*3 + 2] = ditherImg[i][j][2];
+        }
+    }
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int  j = 0; j<imgWidth; j++)
+            delete[] ditherImg[i][j];
+        delete[] ditherImg[i];
+    }
+    delete[] ditherImg;
+
+    temp1.saveImage(finalImage, name, 3);
+    temp1.freeMemory(finalImage);
+
+
+
+}
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::MBVQ_FloydSteinberg(unsigned char *imgData, char name[]) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    float error = 0, valueOld[3];
+    unsigned char R1, G1, B1;
+    unsigned char *valueNew = new unsigned char[3];
+
+    float ***ditherImg = new float**[imgHeight];
+    for (int i = 0; i<imgHeight; i++) {
+        ditherImg[i] = new float *[imgWidth];
+        for(int j = 0; j<imgWidth; j++)
+            ditherImg[i][j] = new float[3];
+    }
+
+    unsigned char *finalImage = new unsigned char[imgWidth * imgHeight * 3];
+    for(int i = 0; i<imgHeight * imgWidth * 3; i++)
+        finalImage[i] = 0;
+
+    unsigned char ***originalImg = temp1.image3D(imgData);
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+            for(int k = 0; k<3; k++) {
+                ditherImg[i][j][k] = originalImg[i][j][k];
+            }
+        }
+    }
+
+    for(int i = 0; i<imgHeight-1; i++) {
+        for(int j = 1; j<imgWidth-1; j++) {
+
+            valueOld[0] = ditherImg[i][j][0];
+            valueOld[1] = ditherImg[i][j][1];
+            valueOld[2] = ditherImg[i][j][2];
+
+            R1 = originalImg[i][j][0];
+            G1 = originalImg[i][j][1];
+            B1 = originalImg[i][j][2];
+
+            valueNew = temp1.pyramidMBVQ(R1, G1, B1, valueOld[0], valueOld[1],valueOld[2]);
+            //valueNew = temp1.pyramidMBVQ(valueOld[0], valueOld[1],valueOld[2], valueOld[0], valueOld[1],valueOld[2]);
+
+            for(int k = 0; k<3; k++) {
+                ditherImg[i][j][k] = valueNew[k];
+
+                error = float(valueOld[k] - valueNew[k]);
+                ditherImg[i][j + 1][k]    = ditherImg[i][j + 1][k]     + float(error*0.4375);
+                ditherImg[i + 1][j - 1][k] = ditherImg[i + 1][j - 1][k]  + float(error*0.1875);
+                ditherImg[i + 1][j][k]     = ditherImg[i + 1][j][k]     + float(error*0.3125);
+                ditherImg[i + 1][j + 1][k] = ditherImg[i + 1][j + 1][k]  + float(error*0.0625);
+
+            }
+        }
+    }
+
+    cout << "MBVQ with Floyd Steinberg dithering implemented!" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++) {
+                finalImage[i*imgWidth*3 + j*3] = ditherImg[i][j][0];
+                finalImage[i*imgWidth*3 + j*3 + 1] = ditherImg[i][j][1];
+                finalImage[i*imgWidth*3 + j*3 + 2] = ditherImg[i][j][2];
+                //cout << "i: " << i << " j: " << j << endl;
+        }
+    }
+
+    cout << "Flag44" << endl;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int  j = 0; j<imgWidth; j++)
+            delete[] originalImg[i][j];
+        delete[] originalImg[i];
+    }
+    delete[] originalImg;
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int  j = 0; j<imgWidth; j++)
+            delete[] ditherImg[i][j];
+        delete[] ditherImg[i];
+    }
+    delete[] ditherImg;
+
+    delete[] valueNew;
+
+    temp1.saveImage(finalImage, name, 3);
+    temp1.freeMemory(finalImage);
+}
+
+
+
+//*****************************************************************************************************
+
+unsigned char *imageProcesAlgo::pyramidMBVQ(unsigned char R1, unsigned char G1, unsigned char B1,
+                                            float R2, float G2, float B2 ) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char* rgbTriple;
+
+    if((R1 + G1) > 255) {
+        if((G1 + B1) >255) {
+            if((R1 + G1 + B1) > 510)
+                rgbTriple = temp1.CMYW(R2, G2, B2);
+            else
+                rgbTriple = temp1.MYGC(R2, G2, B2);
+        }
+        else
+            rgbTriple = temp1.RGMY(R2, G2, B2);
+    }
+    else {
+        if((G1 + B1) <= 255){
+            if((R1 + G1 + B1) <= 255)
+                rgbTriple = temp1.KRGB(R2, G2, B2);
+            else
+                rgbTriple = temp1.RGBM(R2, G2, B2);
+        }
+        else
+            rgbTriple = temp1.CMGB(R2, G2, B2);
+    }
+
+    return rgbTriple;
+
+}
+
+//*****************************************************************************************************
+
+unsigned char *imageProcesAlgo::CMYW( float R2, float G2, float B2) {
+
+    float distC, distM, distY, distW, minDist;
+
+    unsigned char* rgbTriple = new unsigned char[3];
+
+    distC = pow(R2, 2)         + pow((G2 - 255), 2) + pow((B2 - 255), 2);
+    distM = pow((R2 - 255), 2) + pow(G2, 2)         + pow((B2 - 255), 2);
+    distY = pow((R2 - 255), 2) + pow((G2 - 255), 2) + pow(B2, 2);
+    distW = pow((R2 - 255), 2) + pow((G2 - 255), 2) + pow((B2 - 255), 2);
+
+    minDist = min(distC, min(distM, min(distY, distW)));
+
+    if(minDist == distC)
+        rgbTriple = C;
+    else if(minDist == distM)
+        rgbTriple = M;
+    else if(minDist == distY)
+        rgbTriple = Y;
+    else
+        rgbTriple = W;
+
+    return rgbTriple;
+}
+
+//*****************************************************************************************************
+
+unsigned char *imageProcesAlgo::MYGC(float R2, float G2, float B2) {
+
+    float distM, distY, distG, distC, minDist;
+
+    unsigned char *rgbTriple = new unsigned char[3];
+
+    distC = pow(R2, 2)         + pow((G2 - 255), 2) + pow((B2 - 255), 2);
+    distM = pow((R2 - 255), 2) + pow(G2, 2)         + pow((B2 - 255), 2);
+    distY = pow((R2 - 255), 2) + pow((G2 - 255), 2) + pow(B2, 2);
+    distG = pow(R2, 2)         + pow((G2 - 255), 2) + pow(B2, 2);
+
+    minDist = min(distC, min(distM, min(distY, distG)));
+
+    if(minDist == distC)
+        rgbTriple = C;
+    else if(minDist == distM)
+        rgbTriple = M;
+    else if(minDist == distY)
+        rgbTriple = Y;
+    else
+        rgbTriple = G;
+
+    return rgbTriple;
+}
+
+//*****************************************************************************************************
+
+unsigned char *imageProcesAlgo::RGMY(float R2, float G2, float B2) {
+
+    float distM, distY, distG, distR, minDist;
+
+    unsigned char* rgbTriple = new unsigned char[3];
+
+    distR = pow((R2 - 255), 2) + pow(G2, 2)         + pow(B2, 2);
+    distM = pow((R2 - 255), 2) + pow(G2, 2)         + pow((B2 - 255), 2);
+    distY = pow((R2 - 255), 2) + pow((G2 - 255), 2) + pow(B2, 2);
+    distG = pow(R2, 2)         + pow((G2 - 255), 2) + pow(B2, 2);
+
+    minDist = min(distR, min(distM, min(distY, distG)));
+
+    if(minDist == distR)
+        rgbTriple = R;
+    else if(minDist == distM)
+        rgbTriple = M;
+    else if(minDist == distY)
+        rgbTriple = Y;
+    else
+        rgbTriple = G;
+
+    return rgbTriple;
+}
+
+//*****************************************************************************************************
+
+
+unsigned char *imageProcesAlgo::RGBM(float R2, float G2, float B2) {
+
+    float distM, distB, distG, distR, minDist;
+
+    unsigned char* rgbTriple = new unsigned char[3];
+
+    distR = pow((R2 - 255), 2) + pow(G2, 2) + pow(B2, 2);
+    distM = pow((R2 - 255), 2) + pow(G2, 2) + pow((B2 - 255), 2);
+    distB = pow(R2, 2) + pow(G2, 2) + pow((B2 - 255), 2);
+    distG = pow(R2, 2) + pow((G2 - 255), 2) + pow(B2, 2);
+
+    minDist = min(distR, min(distM, min(distB, distG)));
+
+    if(minDist == distR)
+        rgbTriple = R;
+    else if(minDist == distM)
+        rgbTriple = M;
+    else if(minDist == distB)
+        rgbTriple = B;
+    else
+        rgbTriple = G;
+
+    return rgbTriple;
+}
+
+//*****************************************************************************************************
+
+
+unsigned char *imageProcesAlgo::KRGB(float R2, float G2, float B2) {
+
+    float distK, distB, distG, distR, minDist;
+
+    unsigned char* rgbTriple = new unsigned char[3];
+
+    distR = pow((R2 - 255), 2) + pow(G2, 2) + pow(B2, 2);
+    distK = pow(R2, 2) + pow(G2, 2) + pow(B2, 2);
+    distB = pow(R2, 2) + pow(G2, 2) + pow((B2 - 255), 2);
+    distG = pow(R2, 2) + pow((G2 - 255), 2) + pow(B2, 2);
+
+    minDist = min(distR, min(distK, min(distB, distG)));
+
+    if(minDist == distR)
+        rgbTriple = R;
+    else if(minDist == distK)
+        rgbTriple = K;
+    else if(minDist == distB)
+        rgbTriple = B;
+    else
+        rgbTriple = G;
+
+    return rgbTriple;
+}
+
+//***********************************************************************************
+
+
+unsigned char *imageProcesAlgo::CMGB(float R2, float G2, float B2) {
+
+    float distM, distB, distG, distC, minDist;
+
+    unsigned char* rgbTriple = new unsigned char[3];
+
+    distC = pow(R2, 2) + pow((G2 - 255), 2) + pow((B2 - 255), 2);
+    distM = pow((R2 - 255), 2) + pow(G2, 2) + pow((B2 - 255), 2);
+    distB = pow(R2, 2) + pow(G2, 2) + pow((B2 - 255), 2);
+    distG = pow(R2, 2) + pow((G2 - 255), 2) + pow(B2, 2);
+
+    minDist = min(distC, min(distM, min(distB, distG)));
+
+    if(minDist == distC)
+        rgbTriple = C;
+    else if(minDist == distM)
+        rgbTriple = M;
+    else if(minDist == distB)
+        rgbTriple = B;
+    else
+        rgbTriple = G;
+
+    return rgbTriple;
+}
+
+//***********************************************************************************
+
+
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 3 a,b,c
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 5){
+        cout << "Syntax Error - Incorrect Parameter Usage:" << endl;
+        printf("program_name input_image.raw output_image.raw [ImgWidth = 256] [ImgHeight = 256]\n"
+               "[Operation = 1 -> shrinking and counting\n"
+               "             2 -> thinning\n"
+               "             3 -> skeletonizing\n ]");
+        return 0;
+    }
+
+    imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[3]), atoi(argv[4]));
+
+    unsigned char *inputImage = test1.readImage(argv[1], 1);
+    cout << "Program running...." << "\n\n";
+    switch(atoi(argv[5])) {
+        case 1: {
+            test1.shrinking(inputImage, argv[2]);
+            break;
+        }
+
+        case 2: {
+            test1.thinning(inputImage, argv[2]);
+            break;
+        }
+
+        case 3: {
+            test1.skeletonizing(inputImage, argv[2]);
+            break;
+        }
+    }
+    
+    test1.freeMemory(inputImage);
+    cout << "\n\nProgram executed succesfully!!.....Press Ctrl+C to exit" << endl;
+
+    getchar();
+
+}
+
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//***************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//***************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane and returning a 2D plane array
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+
+    if(planeNum == 0) {
+        for (int i = 0; i < imgHeight; i++) {
+            for (int j =0; j < imgWidth; j++) {
+                plane[i][j] = imgData[i*imgWidth + j];
+            }
+        }
+    }
+
+    else {
+        for (int i = 0; i < imgHeight; i++) {
+            for (int j =0; j < imgWidth; j++) {
+                plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+            }
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[3*i + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//***********************************************************************************
+
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+
+    int computeBond(unsigned char **image, int row, int column);
+
+    unsigned char **binaryIntensity(unsigned char *img);
+
+    unsigned char **reverseBinaryIntensity(unsigned char *img);
+
+    unsigned char bitPattern(unsigned char **img, int row, int column);
+
+    unsigned char **padImage(unsigned char **img);
+
+    unsigned char matchConditionalMask(unsigned char inputPattern, int operation);
+
+    unsigned char matchUnconditionalMask(unsigned char inputPattern);
+
+    unsigned char matchUnconditionalMaskSkeleton(unsigned char inputPattern);
+
+    void shrinking(unsigned char *img, char name[]);
+
+    void skeletonizing(unsigned char *img, char name[]);
+
+    void thinning(unsigned char *img, char name[]);
+};
+
+
+#endif /* IMAGEPROCESALGO_H_ */
+
+
+
+
+
+#include "imageProcesAlgo.h"
+
+
+unsigned char imageProcesAlgo::matchConditionalMask(unsigned char inputPattern, int operation) {
+
+/*unsigned char shrinkPatterns[58] = { 0b01000000, 0b00010000, 0b00000100, 0b00000001,
+                                   0b10000000, 0b00100000, 0b000010000, 0b00000100,
+                                   0b11000000, 0b01100000, 0b00110000, 0b00011000,
+                                   0b00001100, 0b00000110, 0b00000011, 0b10000001,
+                                   0b01110000, 0b00011100, 0b00000111, 0b11000001,
+                                   0b10110000, 0b10100001, 0b01101000, 0b11000010,
+                                   0b11100000, 0b00111000, 0b00001110, 0b10000011,
+                                   0b11110000, 0b11100001, 0b01111000, 0b00111100,
+                                   0b00011110, 0b00001111, 0b10000111, 0b11000011,
+                                   0b10110001, 0b01101100,
+                                   0b11110001, 0b01111100, 0b00011111, 0b11000111,
+                                   0b11100011, 0b11111000, 0b00111110, 0b10001111,
+                                   0b11110011, 0b11100111, 0b11111100, 0b11111001,
+                                   0b01111110, 0b00111111, 0b10011111, 0b11001111,
+                                   0b11110111, 0b11111101, 0b01111111, 0b11011111
+                                    };*/
+
+unsigned char shrinkPatterns[58] = {
+                                    0b01000000, 0b00010000, 0b00000100, 0b00000001,
+                                    0b10000000, 0b00100000, 0b00001000, 0b00000010,
+                                    0b11000000, 0b01100000, 0b00110000, 0b00011000, 0b00001100, 0b00000110, 0b00000011, 0b10000001,
+                                    0b11000001, 0b01110000, 0b00011100, 0b00000111,
+                                    0b10110000, 0b10100001, 0b01101000, 0b11000010,
+                                    0b11100000, 0b00111000, 0b00001110, 0b10000011,
+                                    0b10110001, 0b01101100,
+                                    0b11110000, 0b11100001, 0b01111000, 0b00111100, 0b00011110, 0b00001111, 0b10000111, 0b11000011,
+                                    0b11110001, 0b01111100, 0b00011111, 0b11000111,
+                                    0b11100011, 0b11111000, 0b00111110, 0b10001111,
+                                    0b11110011, 0b11100111, 0b11111100, 0b11111001, 0b01111110, 0b00111111, 0b10011111, 0b11001111,
+                                    0b11110111, 0b11111101, 0b01111111, 0b11011111
+                                    };
+
+unsigned char thinPatterns[46] = { 0b10100000, 0b00101000, 0b00001010, 0b00000101,
+                                 0b01110000, 0b00011100, 0b00000111, 0b10000010,
+                                 0b10110000, 0b10100001, 0b01101000, 0b11000010,
+                                 0b11100000, 0b00111000, 0b00001110, 0b10000011,
+                                 0b11110000, 0b11100001, 0b01111000, 0b00111100,
+                                 0b00011110, 0b00001111, 0b10000111, 0b11000011,
+                                 0b10110001, 0b01101100,
+                                 0b11110001, 0b01111100, 0b00011111, 0b11000111,
+                                 0b11100011, 0b11111000, 0b00111110, 0b10001111,
+                                 0b11110011, 0b11100111, 0b11111100, 0b11111001,
+                                 0b01111110, 0b00111111, 0b10011111, 0b11001111,
+                                 0b11110111, 0b11111101, 0b01111111, 0b11011111
+                                };
+unsigned skeletonizing[40] = {
+                             0b10100000, 0b00101000, 0b00001010, 0b10000010,
+                             0b11000001, 0b01110000, 0b00011100, 0b00000111,
+                             0b11110000, 0b11100001, 0b01111000, 0b00111100, 0b00011110, 0b00001111, 0b10000111, 0b11000011,
+                             0b11110001, 0b01111100, 0b00011111, 0b11000111,
+                             0b11100011, 0b11111000, 0b00111110, 0b10001111,
+                             0b11110011, 0b11100111, 0b11111100, 0b11111001, 0b01111110, 0b00111111, 0b10011111, 0b11001111,
+                             0b11110111, 0b11111101, 0b01111111, 0b11011111,
+                             0b11111011, 0b11111110, 0b10111111, 0b11101111
+
+                            };
+
+switch(operation) {
+    case 1: {
+        for (int i = 0; i<58; i++) {
+                if(inputPattern == shrinkPatterns[i]){
+                    return 1;
+                }
+        }
+        return 0;
+    }
+
+    case 2: {
+        for (int i = 0; i<46; i++) {
+                if(inputPattern == thinPatterns[i]){
+                    return 1;
+                }
+        }
+        return 0;
+    }
+
+    case 3: {
+        for (int i = 0; i<40; i++) {
+                if(inputPattern == skeletonizing[i]){
+                    return 1;
+                }
+        }
+        return 0;
+    }
+}
+
+
+}
+
+
+
+//*****************************************************************************************************
+
+
+unsigned char **imageProcesAlgo::binaryIntensity(unsigned char *img) {
+
+    unsigned char **tempImg = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        tempImg[i] = new unsigned char [imgWidth];
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j< imgWidth; j++) {
+            if(img[i*imgWidth + j] >= 127)
+                tempImg[i][j] = 1;
+            else
+                tempImg[i][j] = 0;
+        }
+    }
+
+    return tempImg;
+}
+
+//*****************************************************************************************************
+
+
+unsigned char **imageProcesAlgo::reverseBinaryIntensity(unsigned char *img) {
+
+    unsigned char **tempImg = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        tempImg[i] = new unsigned char [imgWidth];
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j< imgWidth; j++) {
+            if(img[i*imgWidth + j] >= 220)
+                tempImg[i][j] = 0;
+            else
+                tempImg[i][j] = 1;
+        }
+    }
+
+    return tempImg;
+}
+
+
+//*****************************************************************************************************
+
+unsigned char imageProcesAlgo::bitPattern(unsigned char **img, int row, int column) {
+
+    unsigned char  neighbour[8] = {0}, mask = 0b10000000;
+    unsigned char bitPattern = 0b00000000;
+
+    neighbour[0] = img[row][column + 1];
+    neighbour[1] = img[row - 1][column + 1];
+    neighbour[2] = img[row - 1][column];
+    neighbour[3] = img[row - 1][column - 1];
+    neighbour[4] = img[row][column - 1];
+    neighbour[5] = img[row + 1][column - 1];
+    neighbour[6] = img[row + 1][column];
+    neighbour[7] = img[row + 1][column + 1];
+
+    for(int i = 0; i<8; i++) {
+        if(neighbour[i] == 1){
+            bitPattern = bitPattern | mask;
+            mask = mask >> 1;
+        }
+        else
+            mask = mask >> 1;
+    }
+
+    return bitPattern;
+}
+
+//*****************************************************************************************************
+
+unsigned char **imageProcesAlgo::padImage(unsigned char **img) {
+
+
+    int newImgHeight = imgHeight + 2;
+    int newImgWidth = imgWidth  + 2;
+
+    unsigned char **padImg = new unsigned char *[newImgHeight];
+    for(int i = 0; i<newImgHeight; i++)
+        padImg[i] = new unsigned char [newImgWidth];
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j<imgWidth; j++ ) {
+         padImg[0][j] = 0;
+         padImg[i + 1][j + 1] = img[i][j];
+         padImg[imgHeight + 1][j] = 0;
+        }
+        padImg[i][0] = 0;
+        padImg[i][imgWidth + 1] = 0;
+    }
+
+    return padImg;
+
+}
+//*****************************************************************************************************
+
+
+unsigned char imageProcesAlgo::matchUnconditionalMask(unsigned char inputPattern) {
+
+    int temp = 0;
+
+    unsigned char patterns1[28] = {
+                                    0b01000000, 0b00010000, // Spur
+                                    0b00000010, 0b10000000, // Single 4-connection
+                                    0b11000000, 0b01100000, 0b00110000, 0b00011000,
+                                    0b00001100, 0b00000110, 0b00000011, 0b10000001, // L cluster
+                                    0b01101000, 0b10110000, 0b10100001, 0b11000010, // 4-Connected offset
+
+                                    0b01100100, 0b00011001, 0b01001100, 0b00010011,
+                                    0b11000100, 0b00110001, 0b01000110, 0b10010001,
+                                    0b11100100, 0b00111001, 0b01001110, 0b10010011 // Spur Corner Cluster
+                                 };
+
+    unsigned char patterns2[41] = {
+                                    0b00111000, // Corner Cluster
+                                    0b10101000, 0b10101000, 0b10001010, 0b10001010,
+                                    0b00101010, 0b00101010, 0b10100010, 0b10100010, //Tee branch
+
+                                    0b01010001, 0b00010101, 0b00010101, 0b01000101,
+                                    0b01010010, 0b01010100, 0b00100101, 0b01001001,
+                                    0b01010011, 0b01010101, 0b00110101, 0b01001101,
+                                    0b01010100, 0b10010100, 0b01000101, 0b01010001,
+                                    0b01010101, 0b10010101, 0b01010101, 0b01010101,
+                                    0b01010110, 0b11010100, 0b01100101, 0b01011001,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101, // Vee branch
+
+                                    0b10100100, 0b00101001, 0b01001010, 0b10010010  // Diagonal branch
+                                   };
+
+    unsigned char elimination[41] = {
+                                    0b00111000, // Corner Cluster
+                                    0b11101011, 0b10111110, 0b10111110, 0b11101011,
+                                    0b10101111, 0b11111010, 0b11111010, 0b10101111, //Tee branch
+
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101, // Vee branch
+
+                                    0b11101110, 0b10111011, 0b11101110, 0b10111011 // Diagonal branch
+                                };
+
+    for (int i = 0; i<28; i++) {
+        if(inputPattern == patterns1[i])
+            temp = 1;
+        }
+
+    for(int i = 0; i<41; i++) {
+        unsigned tempPattern = inputPattern & elimination[i];
+        if(tempPattern == patterns2[i])
+            temp = 1;
+    }
+
+    if (temp == 1)
+        return 1;
+    else
+        return 0;
+
+}
+
+//*****************************************************************************************************
+
+unsigned char imageProcesAlgo::matchUnconditionalMaskSkeleton(unsigned char inputPattern) {
+
+    int temp = 0;
+    unsigned char patterns1[12] = {
+                                    0b00000001, 0b00000100, 0b01000000, 0b00010000, //Spur
+                                    0b00000010, 0b10000000, 0b00001000, 0b00100000, //Single 4 connection
+                                    0b10100000, 0b00101000, 0b10000010, 0b00001010 //L corner
+                                  };
+
+    unsigned char patterns2[38] = {
+                                    0b00111000, 0b10000011, // Corner cluster
+                                    0b10101000, 0b00101010, 0b10001010, 0b10100010, //Tee Branch
+
+                                    0b01010001, 0b00010101, 0b00010101, 0b01000101,
+                                    0b01010010, 0b01010100, 0b00100101, 0b01001001,
+                                    0b01010011, 0b01010101, 0b00110101, 0b01001101,
+                                    0b01010100, 0b10010100, 0b01000101, 0b01010001,
+                                    0b01010101, 0b10010101, 0b01010101, 0b01010101,
+                                    0b01010110, 0b11010100, 0b01100101, 0b01011001,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101, //Vee branch
+
+                                    0b10100100, 0b00101001, 0b01001010, 0b10010010 //Diagonal
+                                  };
+
+    unsigned char elimination[38] = {
+                                    0b00111000, 0b10000011, // Corner cluster
+                                    0b10101000, 0b00101010, 0b10001010, 0b10100010,  //Tee Branch
+
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101,
+                                    0b01010111, 0b11010101, 0b01110101, 0b01011101, //Vee branch
+
+                                    0b11101110, 0b10111011, 0b11101110, 0b10111011  //Diagonal
+                                  };
+
+    for (int i = 0; i<12; i++) {
+        if(inputPattern == patterns1[i])
+            temp = 1;
+        }
+
+    for(int i = 0; i<38; i++) {
+        unsigned tempPattern = inputPattern & elimination[i];
+        if(tempPattern == patterns2[i])
+            temp = 1;
+    }
+
+    if (temp == 1)
+        return 1;
+    else
+        return 0;
+}
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::shrinking(unsigned char *img, char name[]) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **binary = temp1.binaryIntensity(img);
+    //unsigned char **binary = temp1.reverseBinaryIntensity(img);
+    unsigned char *finalImage = new unsigned char[w1 * h1];
+
+    int countStars = 0, starSizeTemp[14] = {0}, starSize[14] = {0};
+
+
+    for (int k = 0; k<13; k++) {
+
+        int temp = 0;
+        unsigned char **padImg = temp1.padImage(binary);
+
+        unsigned char **middleStage1 = new unsigned char *[imgHeight];
+        for(int i = 0; i<imgHeight; i++)
+            middleStage1[i] = new unsigned char [imgWidth];
+
+        for(int i = 0; i < h1; i++){
+            for(int j = 0; j < w1; j++)
+                middleStage1[i][j] = 0;
+        }
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++) {
+                if( padImg[i+1][j+1] == 1) {
+                    unsigned char inputBitPattern = temp1.bitPattern(padImg, i+1, j+1);
+                    middleStage1[i][j] = temp1.matchConditionalMask(inputBitPattern, 1);
+                }
+            }
+        }
+
+        unsigned char **middleStage2 = temp1.padImage(middleStage1);
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++) {
+                if( middleStage2[i+1][j+1] == 1) {
+                    unsigned char inputBitPattern = temp1.bitPattern(middleStage2, i+1, j+1);
+                    binary[i][j] = temp1.matchUnconditionalMask(inputBitPattern);
+                }
+            }
+        }
+
+        for(int i = 0; i< imgHeight; i++)
+            delete[] middleStage1[i];
+        delete[] middleStage1;
+
+        for(int i = 0; i< (imgHeight + 2); i++) {
+            delete[] middleStage2[i];
+            delete[] padImg[i];
+        }
+        delete[] middleStage2;
+        delete[] padImg;
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++)
+                finalImage[i*imgWidth + j] = binary[i][j] * 255;
+        }
+
+        for(int i = 1; i<imgHeight - 1; i++) {
+            for(int j = 1; j<imgWidth - 1; j++) {
+                if(binary[i][j] == 1){
+                    unsigned char inputBitPattern2 = temp1.bitPattern(binary, i, j);
+                    if (inputBitPattern2 == 0b00000000)
+                        temp = temp + 1;
+                }
+            }
+        }
+        //cout << temp << endl;
+        starSizeTemp[k] = temp;
+
+    }
+
+    for(int i = 0; i<(imgHeight*imgWidth); i++) {
+        if(finalImage[i] == 255)
+            countStars = countStars + 1;
+    }
+
+    temp1.saveImage(finalImage, name, 1);
+    delete[] binary;
+    delete[] finalImage;
+
+    cout << "Total Number of Stars: " << countStars << "\n\n";
+    starSize[0] = starSizeTemp[0];
+    //cout << starSize[0] << endl;
+    for(int i = 1; i<13; i++) {
+        starSize[i] = starSizeTemp[i] - starSizeTemp[i - 1];
+        //cout << starSize[i] << endl;
+    }
+
+    for(int i = 0; i<13; i++) {
+        cout << "Number of Stars of size " << (i + 1) << ": ";
+        //cout << starSize[i] << endl;
+        for(int j = 0; j<(starSize[i]); j++)
+            cout << "*";
+        cout << endl;
+    }
+
+
+}
+
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::skeletonizing(unsigned char *img, char name[]) {
+
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **binary = temp1.reverseBinaryIntensity(img);
+    unsigned char *finalImage = new unsigned char[w1 * h1];
+
+    for (int k = 0; k<14; k++) {
+
+        int temp = 0;
+        unsigned char **padImg = temp1.padImage(binary);
+
+        unsigned char **middleStage1 = new unsigned char *[imgHeight];
+        for(int i = 0; i<imgHeight; i++)
+            middleStage1[i] = new unsigned char [imgWidth];
+
+        for(int i = 0; i < h1; i++){
+            for(int j = 0; j < w1; j++)
+                middleStage1[i][j] = 0;
+        }
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++) {
+                if( padImg[i+1][j+1] == 1) {
+                    unsigned char inputBitPattern = temp1.bitPattern(padImg, i+1, j+1);
+                    middleStage1[i][j] = temp1.matchConditionalMask(inputBitPattern, 3);
+                }
+            }
+        }
+
+        unsigned char **middleStage2 = temp1.padImage(middleStage1);
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++) {
+                if( middleStage2[i+1][j+1] == 1) {
+                    unsigned char inputBitPattern = temp1.bitPattern(middleStage2, i+1, j+1);
+                    binary[i][j] = temp1.matchUnconditionalMaskSkeleton(inputBitPattern);
+                }
+            }
+        }
+
+        for(int i = 0; i< imgHeight; i++)
+            delete[] middleStage1[i];
+        delete[] middleStage1;
+
+        for(int i = 0; i< (imgHeight + 2); i++) {
+            delete[] middleStage2[i];
+            delete[] padImg[i];
+        }
+        delete[] middleStage2;
+        delete[] padImg;
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++)
+                if(binary[i][j] == 0)
+                    finalImage[i*imgWidth + j] = 255;
+                else
+                    finalImage[i*imgWidth + j] = 0;
+        }
+    }
+
+    temp1.saveImage(finalImage, name, 1);
+    delete[] binary;
+    delete[] finalImage;
+}
+
+//*****************************************************************************************************
+
+
+void imageProcesAlgo::thinning(unsigned char *img, char name[]) {
+
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    unsigned char **binary = temp1.reverseBinaryIntensity(img);
+    unsigned char *finalImage = new unsigned char[w1 * h1];
+
+    for (int k = 0; k<16; k++) {
+
+        int temp = 0;
+        unsigned char **padImg = temp1.padImage(binary);
+
+        unsigned char **middleStage1 = new unsigned char *[imgHeight];
+        for(int i = 0; i<imgHeight; i++)
+            middleStage1[i] = new unsigned char [imgWidth];
+
+        for(int i = 0; i < h1; i++){
+            for(int j = 0; j < w1; j++)
+                middleStage1[i][j] = 0;
+        }
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++) {
+                if( padImg[i+1][j+1] == 1) {
+                    unsigned char inputBitPattern = temp1.bitPattern(padImg, i+1, j+1);
+                    middleStage1[i][j] = temp1.matchConditionalMask(inputBitPattern, 2);
+                }
+            }
+        }
+
+        unsigned char **middleStage2 = temp1.padImage(middleStage1);
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++) {
+                if( middleStage2[i+1][j+1] == 1) {
+                    unsigned char inputBitPattern = temp1.bitPattern(middleStage2, i+1, j+1);
+                    binary[i][j] = temp1.matchUnconditionalMask(inputBitPattern);
+                }
+            }
+        }
+
+        for(int i = 0; i< imgHeight; i++)
+            delete[] middleStage1[i];
+        delete[] middleStage1;
+
+        for(int i = 0; i< (imgHeight + 2); i++) {
+            delete[] middleStage2[i];
+            delete[] padImg[i];
+        }
+        delete[] middleStage2;
+        delete[] padImg;
+
+        for(int i = 0; i<imgHeight; i++) {
+            for(int j = 0; j<imgWidth; j++)
+                if(binary[i][j] == 0)
+                    finalImage[i*imgWidth + j] = 255;
+                else
+                    finalImage[i*imgWidth + j] = 0;
+        }
+
+    }
+
+    temp1.saveImage(finalImage, name, 1);
+    delete[] binary;
+    delete[] finalImage;
+
+}
+
+//***********************************************************************************
+
+
+
+//************************************************************************
+// EE569 Homework 2, Prof. Kuo, Spring 2018
+// @author: Hrishikesh Hippalgaonkar
+// Email ID: hippalga@usc.edu
+// USC ID: 9573681608
+// Tested in GNU GCC Compiler(32 bit)::CodeBlocks 16.01 IDE, Windows 10
+// Question 3d
+// Submission Date: 4th March, 2018
+//************************************************************************
+
+
+#include <iostream>
+#include "imageBasicOps.h"
+#include "imageProcesAlgo.h"
+using namespace std;
+
+int main(int argc, char *argv[]) {
+
+    // Check for proper syntax
+    if (argc < 4){
+        printf("Syntax Error - Incorrect Parameter Usage: \n"
+               "program_name input_image.raw output.raw [ImgWidth = 256] [ImgHeight = 256]\n");
+
+        return 0;
+    }
+
+    imageProcesAlgo test1;
+    test1.setDimensions(atoi(argv[3]), atoi(argv[4]));
+
+    unsigned char *inputImage = test1.readImage(argv[1], 3);
+    cout << "Program running...." << "\n\n";
+
+    test1.FindUniquePieces(inputImage);
+
+    test1.freeMemory(inputImage);
+    cout << "\nProgram executed succesfully!!....Press Ctrl+C to exit" << endl;
+
+    getchar();
+
+}
+
+
+
+
+#ifndef IMAGEBASICOPS_H_
+#define IMAGEBASICOPS_H_
+
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cmath>
+#include <vector>
+#include <map>
+#include <algorithm>
+using namespace std;
+
+class imageBasicOps {
+
+public:
+    int imgHeight;
+    int imgWidth;
+
+    void setDimensions(int newImgWidth,int newImgHeight);
+
+    unsigned char *readImage(char imgName[], int bytesPerPixel) ;
+
+    void saveImage(unsigned char *imgData, char imgName[], int bytesPerPixel) ;
+
+    void freeMemory(unsigned char *imgData) { delete [] imgData; }
+
+    unsigned char **separatePlane(unsigned char *img, int planeNum);
+    // The plane number can be 1, 2 or 3
+
+    unsigned char *separatePlane(unsigned char *imgData, int planeNum, int dummy);
+
+};
+#endif /* IMAGEBASICOPS */
+
+
+
+
+#include "imageBasicOps.h"
+
+void imageBasicOps::setDimensions(int newImgWidth,int newImgHeight) {
+
+    imgWidth = newImgWidth;
+    imgHeight = newImgHeight;
+}
+
+
+
+//***************************************************************************************
+
+
+
+unsigned char *imageBasicOps::readImage(char imageName[], int bytesPerPixel) {
+
+    FILE *file;
+
+    int Size = imgWidth * imgHeight;
+    unsigned char *imageData = new unsigned char [Size*bytesPerPixel];
+
+    // Read image (filename specified by first argument) into image data matrix
+    if (!(file=fopen(imageName,"r+b"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fread(imageData, sizeof(unsigned char), Size*bytesPerPixel, file);
+    fclose(file);
+    return imageData;
+}
+
+
+
+//***************************************************************************************
+
+
+
+void imageBasicOps::saveImage(unsigned char *imageData, char imageName[], int bytesPerPixel) {
+
+    FILE *otherFile;
+    int Size = imgWidth * imgHeight;
+
+    if (!(otherFile=fopen(imageName,"wb"))) {
+        cout << "Cannot open file: " << imageName << endl;
+        exit(1);
+    }
+
+    fwrite(imageData, sizeof(unsigned char), Size*bytesPerPixel, otherFile);
+    fclose(otherFile);
+}
+
+
+
+//***********************************************************************************
+
+
+
+unsigned char **imageBasicOps::separatePlane(unsigned char *imgData, int planeNum) {
+
+    //Separating the plane
+    
+    unsigned char **plane = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        plane[i] = new unsigned char [imgWidth];
+
+    if(planeNum != 0) {
+        for (int i = 0; i < imgHeight; i++) {
+            for (int j =0; j < imgWidth; j++) {
+                plane[i][j] = imgData[i*imgWidth*3 + j*3 + planeNum - 1];
+            }
+        }
+    }
+
+    else {
+        for (int i = 0; i < imgHeight; i++) {
+            for (int j =0; j < imgWidth; j++) {
+                plane[i][j] = imgData[i*imgWidth + j];
+            }
+        }
+    }
+
+    return plane;
+
+}
+
+//***************************************************************************************
+
+
+unsigned char *imageBasicOps::separatePlane(unsigned char *imgData, int planeNum, int dummy) {
+
+    //Separating the plane
+    int Size = imgHeight * imgWidth;
+
+    unsigned char *plane = new unsigned char[Size];
+    for (int i = 0; i < imgHeight; i++) {
+        for(int j =0; j< imgWidth; j++){
+            plane[i*imgWidth + j] = imgData[3*i + planeNum -1];
+        }
+    }
+
+    //cout << " Plane created " << endl;
+    return plane;
+
+}
+
+
+//***************************************************************************************
+
+
+
+
+#ifndef IMAGEPROCESALGO_H_
+#define IMAGEPROCESALGO_H_
+
+#include "imageBasicOps.h"
+
+class imageProcesAlgo: public imageBasicOps {
+public:
+
+    unsigned char **binaryIntensity(unsigned char *img);
+
+    unsigned char bitPattern(unsigned char **img, int row, int column);
+
+    int **FindTopLeftCorners(unsigned char **img);
+
+    int **FindTopRightCorners(unsigned char **img);
+
+    int **FindBottomLeftCorners(unsigned char **img);
+
+    int **FindBottomRightCorners(unsigned char **img);
+
+    void FindUniquePieces(unsigned char *imgData);
+
+    int ComparePuzzleID(vector<unsigned char> id1,
+                     vector<unsigned char> id2, vector<unsigned char> id2_mir);
+};
+
+#endif /* IMAGEPROCESALGO_H_ */
+
+
+
+
+
+#include "imageProcesAlgo.h"
+
+unsigned char **imageProcesAlgo::binaryIntensity(unsigned char *img) {
+
+    unsigned char **tempImg = new unsigned char *[imgHeight];
+    for(int i = 0; i<imgHeight; i++)
+        tempImg[i] = new unsigned char [imgWidth];
+
+    for(int i = 0; i<imgHeight; i++) {
+        for(int j = 0; j< imgWidth; j++) {
+            if(img[i*imgWidth + j] >= 127)
+                tempImg[i][j] = 0;
+            else
+                tempImg[i][j] = 1;
+        }
+    }
+
+    return tempImg;
+}
+
+
+//*****************************************************************************************************
+
+unsigned char imageProcesAlgo::bitPattern(unsigned char **img, int row, int column) {
+
+    unsigned char  neighbour[8] = {0}, mask = 0b10000000;
+    unsigned char bitPattern = 0b00000000;
+
+    neighbour[0] = img[row][column + 1];
+    neighbour[1] = img[row - 1][column + 1];
+    neighbour[2] = img[row - 1][column];
+    neighbour[3] = img[row - 1][column - 1];
+    neighbour[4] = img[row][column - 1];
+    neighbour[5] = img[row + 1][column - 1];
+    neighbour[6] = img[row + 1][column];
+    neighbour[7] = img[row + 1][column + 1];
+
+    for(int i = 0; i<8; i++) {
+        if(neighbour[i] == 1){
+            bitPattern = bitPattern | mask;
+            mask = mask >> 1;
+        }
+        else
+            mask = mask >> 1;
+    }
+
+    return bitPattern;
+}
+
+//*****************************************************************************************************
+
+
+int **imageProcesAlgo::FindTopLeftCorners(unsigned char **img) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int **location = new int *[16];
+    for(int i = 0; i<16; i++)
+        location[i] = new int [2];
+
+    for(int i = 0; i<16; i++) {
+        location[i][0] = 0;
+        location[i][1] = 0;
+    }
+
+    int count = 0;
+    for(int i = 1; i<imgHeight-1; i++) {
+        for(int j = 1; j<imgWidth-1; j++) {
+            if(img[i][j] == 1) {
+                unsigned char pattern = temp1.bitPattern(img, i, j);
+                if(pattern == 0b10000011) {
+                    (location[count][0]) = i;
+                    (location[count][1]) = j;
+                    count = count + 1;
+                }
+            }
+        }
+    }
+
+    return location;
+
+}
+
+
+//*****************************************************************************************************
+
+
+int **imageProcesAlgo::FindTopRightCorners(unsigned char **img) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int **location = new int *[16];
+    for(int i = 0; i<16; i++)
+        location[i] = new int [2];
+
+     for(int i = 0; i<16; i++) {
+        location[i][0] = 0;
+        location[i][1] = 0;
+    }
+
+    int count = 0;
+
+    for(int i = 1; i<imgHeight-1; i++) {
+        for(int j = 1; j<imgWidth-1; j++) {
+            if(img[i][j] == 1) {
+                unsigned char pattern = temp1.bitPattern(img, i, j);
+                if(pattern == 0b00001110) {
+                    (location[count][0]) = i;
+                    (location[count][1]) = j;
+                    count = count + 1;
+                }
+            }
+        }
+    }
+
+    return location;
+
+}
+
+
+//*****************************************************************************************************
+
+
+int **imageProcesAlgo::FindBottomLeftCorners(unsigned char **img) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int **location = new int *[20];
+    for(int i = 0; i<20; i++)
+        location[i] = new int [2];
+
+     for(int i = 0; i<20; i++) {
+        location[i][0] = 0;
+        location[i][1] = 0;
+    }
+
+    int count = 0;
+
+    for(int i = 1; i<imgHeight-1; i++) {
+        for(int j = 1; j<imgWidth-1; j++) {
+            if(img[i][j] == 1) {
+                unsigned char pattern = temp1.bitPattern(img, i, j);
+                if(pattern == 0b11100000) {
+                    (location[count][0]) = i;
+                    (location[count][1]) = j;
+                    count = count + 1;
+                }
+            }
+            //cout << "i: " << i << " j: " << j << endl;
+        }
+    }
+
+    return location;
+}
+
+
+//*****************************************************************************************************
+
+
+
+int **imageProcesAlgo::FindBottomRightCorners(unsigned char **img) {
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+
+    int **location = new int *[16];
+    for(int i = 0; i<16; i++)
+        location[i] = new int [2];
+
+     for(int i = 0; i<16; i++) {
+        location[i][0] = 0;
+        location[i][1] = 0;
+    }
+
+    int count = 0;
+
+    for(int i = 1; i<imgHeight-1; i++) {
+        for(int j = 1; j<imgWidth-1; j++) {
+            if(img[i][j] == 1) {
+                unsigned char pattern = temp1.bitPattern(img, i, j);
+                if(pattern == 0b00111000) {
+                    (location[count][0]) = i;
+                    (location[count][1]) = j;
+                    count = count + 1;
+                }
+            }
+        }
+    }
+
+    return location;
+
+}
+
+
+//*****************************************************************************************************
+
+void imageProcesAlgo::FindUniquePieces(unsigned char *imgData) {
+
+
+
+    int h1 = this->imgHeight;
+    int w1 = this->imgWidth;
+
+    imageProcesAlgo temp1;
+    temp1.setDimensions(w1, h1);
+    int heads[16], holes[16], row = 0, col = 0, k, uniquePieces = 0, result;
+
+    unsigned char **puzzleID = new unsigned char *[16];
+    for(int i = 0; i<16; i++)
+        puzzleID[i] = new unsigned char [4];
+
+    unsigned char **binaryImg = temp1.binaryIntensity(imgData);
+
+    for(int i = 0; i<16; i++){
+        heads[i] = 0;
+        holes[i] = 0;
+    }
+
+    int **topLeftCorners     = temp1.FindTopLeftCorners(binaryImg);
+    int **topRightCorners    = temp1.FindTopRightCorners(binaryImg);
+    int puzzleSize = topRightCorners[0][1] - topLeftCorners[0][1];
+
+    for (k = 0; k<16; k++) {
+        row = topLeftCorners[k][0];
+        col = topLeftCorners[k][1];
+        int t1 = 0, t2 = 0;
+        if(binaryImg[row - 1][col + (puzzleSize/2)] == 1) { // Check Top edge
+            puzzleID[k][0] = 1;
+            t1 = t1 + 1;
+        }
+        else if(binaryImg[row][col + (puzzleSize/2)] == 0) {
+            puzzleID[k][0] = 2;
+            t2 = t2 + 1;
+        }
+        else if((binaryImg[row][col + (puzzleSize/2)] == 1) && (binaryImg[row - 1][col + (puzzleSize/2)] == 0))
+            puzzleID[k][0] = 0;
+
+
+        if(binaryImg[row + (puzzleSize/2)][col + puzzleSize + 1] == 1) { // Check right edge
+            puzzleID[k][1] = 1;
+            t1 = t1 + 1;
+        }
+        else if(binaryImg[row + (puzzleSize/2)][col + puzzleSize] == 0) {
+            puzzleID[k][1] = 2;
+            t2 = t2 + 1;
+        }
+        else if((binaryImg[row + (puzzleSize/2)][col + puzzleSize] == 1) && (binaryImg[row + (puzzleSize/2)][col + puzzleSize + 1] == 0))
+            puzzleID[k][1] = 0;
+
+
+        if(binaryImg[row + puzzleSize + 1][col + (puzzleSize/2)] == 1) { // Check bottom edge
+            puzzleID[k][2] = 1;
+            t1 = t1 + 1;
+        }
+        else if(binaryImg[row + puzzleSize][col + (puzzleSize/2)] == 0) {
+            puzzleID[k][2] = 2;
+            t2 = t2 + 1;
+        }
+        else if((binaryImg[row + puzzleSize + 1][col + (puzzleSize/2)] == 0) && (binaryImg[row + puzzleSize][col + (puzzleSize/2)] == 1))
+            puzzleID[k][2] = 0;
+
+
+        if(binaryImg[row + (puzzleSize/2)][col - 1] == 1) { // Check left edge
+            puzzleID[k][3] = 1;
+            t1 = t1 + 1;
+        }
+        else if(binaryImg[row + (puzzleSize/2)][col] == 0) {
+            puzzleID[k][3] = 2;
+            t2 = t2 + 1;
+        }
+        else if((binaryImg[row + (puzzleSize/2)][col] == 1) && (binaryImg[row + (puzzleSize/2)][col - 1] == 0))
+            puzzleID[k][3] = 0;
+
+        heads[k] = t1;
+        holes[k] = t2;
+
+    }
+
+    /*for(int i = 0; i<16; i++) {
+        cout << "Puzzle " << i+1 << endl;
+        cout << "Holes: " << holes[i] << endl;
+        cout << "Heads: " << heads[i] << endl;
+        cout << int(puzzleID[i][0]) << " " << int(puzzleID[i][1]) << " " << int(puzzleID[i][2]) << " " << int(puzzleID[i][3]) <<"\n\n";
+    }*/
+
+    map<int, int> UniquePieceLUT;
+
+    UniquePieceLUT[0] = 1;
+    int uniqueID = 1;
+
+    for(int i = 1; i<16; i++) {
+        int flag = 0;
+        for(int j = 0; j<i; j++) {
+
+            if(holes[i] == holes[j] && heads[i] == heads[j]){
+                vector<unsigned char> id1, id2, id2_mir;
+                for(int k = 0; k<4; k++) {
+                    id1.push_back(puzzleID[i][k]);
+                    id2.push_back(puzzleID[j][k]);
+                }
+                id2_mir.push_back(puzzleID[j][2]);
+                id2_mir.push_back(puzzleID[j][1]);
+                id2_mir.push_back(puzzleID[j][0]);
+                id2_mir.push_back(puzzleID[j][3]);
+
+                result = temp1.ComparePuzzleID(id1, id2, id2_mir);
+                if(result == 1){
+                    UniquePieceLUT[i] = UniquePieceLUT[j];
+                    //uniqueID = uniqueID + 1;
+                    flag = 1;
+                }
+            }
+        }
+        if(flag == 0){
+        uniqueID = uniqueID + 1;
+        UniquePieceLUT[i] = uniqueID;
+        }
+    }
+
+    cout << "Unique pieces: " << uniqueID << "\n\n";
+
+
+
+    for(int i = 1; i<uniqueID + 1; i++){
+        cout << "Category " << i << ": " ;
+        for(int j = 0; j<16; j++){
+            if(UniquePieceLUT[j] == i)
+                cout << j+1 << ", ";
+        }
+        cout << "\n";
+    }
+
+    for(int i = 0; i< 16; i++) {
+        delete[] topRightCorners[i];
+        delete[] topLeftCorners[i];
+    }
+    delete[] topRightCorners;
+    delete[] topLeftCorners;
+}
+
+
+
+
+//***********************************************************************************
+
+int imageProcesAlgo::ComparePuzzleID(vector<unsigned char> id1,
+    vector<unsigned char> id2, vector<unsigned char> id2_mir) {
+
+
+    for(int i = 0; i<4; i++) {
+        if((id1[0] == id2[0]) && (id1[1] == id2[1]) && (id1[2] == id2[2]) && (id1[3] == id2[3]))
+            return 1; // This means the puzzle pieces match
+
+        if((id1[0] == id2_mir[0]) && (id1[1] == id2_mir[1]) && (id1[2] == id2_mir[2]) && (id1[3] == id2_mir[3]))
+            return 1; // This means the puzzle pieces match after mirroring
+
+        rotate(id2.begin(),id2.begin()+1,id2.end());
+        rotate(id2_mir.begin(),id2_mir.begin()+1,id2_mir.end());
+    }
+    return 0; ///This means the puzzle pieces don't match
+}
+
+//***********************************************************************************
