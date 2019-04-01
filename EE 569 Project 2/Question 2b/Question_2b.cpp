@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
     }
 
     test1.freeMemory(inputImage);
-    cout << "\nProgram executed succesfully!!....Press Ctrl+C to exit" << endl;
+    cout << "\nProgram executed succesfully!!....Press Enter to continue" << endl;
 
 	getchar();
 

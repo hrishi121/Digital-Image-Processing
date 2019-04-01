@@ -7,10 +7,10 @@ CFLAGS = -c
 OUTPUTFOLDERS = p3_2b_output
 
 # List of Arguments
-ARGS1 = ee569_hw2_images/colorchecker.raw FS_dither_normal.raw 512 512 127 1
-ARGS2 = ee569_hw2_images/colorchecker.raw FS_dither_serpentine.raw 512 512 127 2
-ARGS3 = ee569_hw2_images/colorchecker.raw JJN_dither.raw 512 512 127 3
-ARGS4 = ee569_hw2_images/colorchecker.raw Stucki_dither.raw 512 512 127 4
+ARGS1 = ./colorchecker.raw FS_dither_normal.raw 512 512 127 1
+ARGS2 = ./colorchecker.raw FS_dither_serpentine.raw 512 512 127 2
+ARGS3 = ./colorchecker.raw JJN_dither.raw 512 512 127 3
+ARGS4 = ./colorchecker.raw Stucki_dither.raw 512 512 127 4
 
 # Code execution and running
 all: Question_2b_exe run
@@ -32,7 +32,7 @@ imageProcesAlgo.o: imageProcesAlgo.h imageProcesAlgo.cpp
 clean:
 	@echo "Cleaning folder by deleting object and executable files"
 	rm -rf $(OUTPUTFOLDERS)
-	rm -rf *.o Question_2b_exe  *.raw *.out
+	rm -rf *.o Question_2b_exe *.out
 
 
 run:
